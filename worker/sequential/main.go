@@ -10,7 +10,6 @@ import (
 	"math/rand"
 	"time"
 	"math"
-	"fmt"
 )
 
 // draw draws an environment to the screen.
@@ -29,8 +28,8 @@ func draw(window *sdl.Window, surface *sdl.Surface, env state.Environment) {
 			nearestDistance := math.Inf(1)
 			var nearestObj *geom.Triangle = nil
 			for k := 0; k < len(env.Objs); k++ {
-				if intersect, hit := env.Objs[k].Intersection(rayPos, rayPos.Sub(env.Cam.Pos)); hit {
-					intersectDistance := intersect.Sub(rayPos).Len()
+				if intersect, hit := env.Objs[k].Intersection(env.Cam.Pos, rayPos.Sub(env.Cam.Pos)); hit {
+					intersectDistance := intersect.Sub(env.Cam.Pos).Len()
 					if nearestObj == nil || intersectDistance < nearestDistance {
 						nearestDistance = intersectDistance
 						nearestObj = &env.Objs[k]
@@ -153,11 +152,5 @@ func main() {
 		if currentUpdate - prevUpdate < screen.MsPerFrame {
 			sdl.Delay(screen.MsPerFrame - (currentUpdate - prevUpdate))
 		}
-		
-		fmt.Println(env.Cam.Pos)
-		fmt.Println(env.Cam.Forward, env.Cam.Forward.Len())
-		fmt.Println(env.Cam.Up, env.Cam.Up.Len())
-		fmt.Println(env.Cam.Left, env.Cam.Left.Len())
-		fmt.Println()
 	}
 }
