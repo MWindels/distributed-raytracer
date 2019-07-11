@@ -61,6 +61,8 @@ func main() {
 		Objs: []geom.Triangle{
 			//geom.Triangle{geom.Vector{0, 0, 1}, geom.Vector{2, 0, 3}, geom.Vector{1, 2, 2}},
 			geom.Triangle{geom.Vector{0, 0, 0}, geom.Vector{2, 0, 0}, geom.Vector{0, 2, 0}},
+			//geom.Triangle{geom.Vector{-0.5, 0.25, 0.25}, geom.Vector{-2, 0, -0.75}, geom.Vector{-1, 1.75, 0}},
+			//geom.Triangle{geom.Vector{0, 0, 0}, geom.Vector{-2, 0, -2}, geom.Vector{0, 2, 0}},
 		},
 		Lights: []state.Light{
 			state.Light{Pos: geom.Vector{0, 0, 0}, Col: state.RGB{0xFF, 0xFF, 0xFF}},
@@ -87,6 +89,11 @@ func main() {
 			moveVector = moveVector.Add(env.Cam.Left)
 		}else if moveDirs & input.MoveRightward != 0 {
 			moveVector = moveVector.Sub(env.Cam.Left)
+		}
+		if moveDirs & input.MoveUpward != 0 {
+			moveVector = moveVector.Add(env.Cam.Up)
+		}else if moveDirs & input.MoveDownward != 0 {
+			moveVector = moveVector.Sub(env.Cam.Up)
 		}
 		
 		// If the camera needs to move, move it.

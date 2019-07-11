@@ -21,7 +21,7 @@ func (t Triangle) Intersection(rOrigin, rDir Vector) (Vector, bool) {
 		
 		// Make sure that the intersection point is ahead of the ray.
 		if intersectParameter >= 0.0 {
-			// Compute the intersection point of the ray and the plane defined by t.
+			// Compute the intersection point of the ray and the plane defined by x.
 			intersect := rOrigin.Add(rDir.Scale(intersectParameter))
 			
 			// Return a valid intersection if the point is inside of the triangle.
