@@ -27,19 +27,21 @@ func draw(window *sdl.Window, surface *sdl.Surface, env state.Environment) {
 			// We can probably do better than a linear search with octrees or k-d trees.
 			nearestDistance := math.Inf(1)
 			var nearestObj *geom.Triangle = nil
+			nearestObjCoords := geom.BaryCoords{}
 			for k := 0; k < len(env.Objs); k++ {
-				if intersect, hit := env.Objs[k].Intersection(env.Cam.Pos, rayPos.Sub(env.Cam.Pos)); hit {
+				if intersect, bcoords, hit := env.Objs[k].Intersection(env.Cam.Pos, rayPos.Sub(env.Cam.Pos)); hit {
 					intersectDistance := intersect.Sub(env.Cam.Pos).Len()
 					if nearestObj == nil || intersectDistance < nearestDistance {
 						nearestDistance = intersectDistance
 						nearestObj = &env.Objs[k]
+						nearestObjCoords = bcoords
 					}
 				}
 			}
 			
 			// If an object was hit, colour a pixel.
 			if nearestObj != nil {
-				surface.Set(i, j, color.RGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x00})
+				surface.Set(i, j, color.RGBA{R: uint8(255 * nearestObjCoords.R1), G: uint8(255 * nearestObjCoords.R2), B: uint8(255 * nearestObjCoords.R3), A: 0x00})
 			}
 		}
 	}
@@ -59,10 +61,10 @@ func main() {
 	// Create an environment (should be able to load this from a JSON file or something).
 	env := state.Environment{
 		Objs: []geom.Triangle{
-			//geom.Triangle{geom.Vector{0, 0, 1}, geom.Vector{2, 0, 3}, geom.Vector{1, 2, 2}},
-			geom.Triangle{geom.Vector{0, 0, 0}, geom.Vector{2, 0, 0}, geom.Vector{0, 2, 0}},
-			//geom.Triangle{geom.Vector{-0.5, 0.25, 0.25}, geom.Vector{-2, 0, -0.75}, geom.Vector{-1, 1.75, 0}},
-			//geom.Triangle{geom.Vector{0, 0, 0}, geom.Vector{-2, 0, -2}, geom.Vector{0, 2, 0}},
+			//geom.Triangle{geom.Vector{0, 0, 1}, geom.Vector{2, 0, 3}, geom.Vector{1, 2, 2}, geom.Vector{}, geom.Vector{}, geom.Vector{}},
+			geom.Triangle{geom.Vector{0, 0, 0}, geom.Vector{2, 0, 0}, geom.Vector{0, 2, 0}, geom.Vector{1, 0, 0}, geom.Vector{0, 1, 0}, geom.Vector{0, 0, 1}},
+			//geom.Triangle{geom.Vector{-2, 0, -0.75}, geom.Vector{-0.5, 0.25, 0.25}, geom.Vector{-1, 1.75, 0}, geom.Vector{}, geom.Vector{}, geom.Vector{}},
+			//geom.Triangle{geom.Vector{-2, 0, -2}, geom.Vector{0, 0, 0}, geom.Vector{0, 2, 0}, geom.Vector{}, geom.Vector{}, geom.Vector{}},
 		},
 		Lights: []state.Light{
 			state.Light{Pos: geom.Vector{0, 0, 0}, Col: state.RGB{0xFF, 0xFF, 0xFF}},
@@ -145,6 +147,9 @@ func main() {
 			
 			// Now that we're sure forward and the global up are not parallel, compute left.
 			env.Cam.Left = env.Cam.Forward.Cross(state.GlobalUp).Norm()
+			
+			// Furthermore, recompute up with respect to left (with indirect respect to the global up vector) so error doesn't build up in forward on the next yaw.
+			env.Cam.Up = env.Cam.Left.Cross(env.Cam.Forward).Norm()
 		}
 		if pitch != 0.0 {
 			env.Cam.Forward = env.Cam.Forward.Rotate(env.Cam.Left, pitch * (float64(surface.H) / float64(surface.W)) * env.Cam.Fov / 2.0).Norm()
