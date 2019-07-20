@@ -9,7 +9,7 @@ var GlobalUp geom.Vector = geom.Vector{0, 1, 0}
 
 // Environment represents a 3-dimensional space full of objects.
 type Environment struct {
-	Objs []geom.Triangle	// Should become proper wavefront objs.
+	Objs []Object
 	Lights []Light
 	Cam Camera
 }

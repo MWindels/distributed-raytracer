@@ -25,23 +25,39 @@ func draw(window *sdl.Window, surface *sdl.Surface, env state.Environment) {
 			
 			// Search for intersections with every object.
 			// We can probably do better than a linear search with octrees or k-d trees.
-			nearestDistance := math.Inf(1)
-			var nearestObj *geom.Triangle = nil
-			nearestObjCoords := geom.BaryCoords{}
+			var nearestDistance float64
+			var nearestObject *state.Object = nil
+			var nearestIntersect geom.Vector
+			var nearestNormal geom.Vector
+			var nearestMaterial state.Material
 			for k := 0; k < len(env.Objs); k++ {
-				if intersect, bcoords, hit := env.Objs[k].Intersection(env.Cam.Pos, rayPos.Sub(env.Cam.Pos)); hit {
+				if intersect, normal, material, hit := env.Objs[k].Intersection(env.Cam.Pos, rayPos.Sub(env.Cam.Pos)); hit {
 					intersectDistance := intersect.Sub(env.Cam.Pos).Len()
-					if nearestObj == nil || intersectDistance < nearestDistance {
+					if nearestObject == nil || intersectDistance < nearestDistance {
 						nearestDistance = intersectDistance
-						nearestObj = &env.Objs[k]
-						nearestObjCoords = bcoords
+						nearestObject = &env.Objs[k]
+						nearestIntersect = intersect
+						nearestNormal = normal
+						nearestMaterial = material
 					}
 				}
 			}
 			
 			// If an object was hit, colour a pixel.
-			if nearestObj != nil {
-				surface.Set(i, j, color.RGBA{R: uint8(255 * nearestObjCoords.R1), G: uint8(255 * nearestObjCoords.R2), B: uint8(255 * nearestObjCoords.R3), A: 0x00})
+			if nearestObject != nil {
+				// Use Phong shading to determine colour at the intersection point.
+				colour := nearestMaterial.Ka
+				for _, l := range env.Lights {
+					lightDir := l.Pos.Sub(nearestIntersect).Norm()
+					reflectDir := nearestNormal.Scale(2 * lightDir.Dot(nearestNormal)).Sub(lightDir)
+					camDir := env.Cam.Pos.Sub(nearestIntersect).Norm()
+					
+					colour = colour.Add(nearestMaterial.Kd.Scale(math.Max(lightDir.Dot(nearestNormal), 0.0)).Multiply(l.Col))
+					colour = colour.Add(nearestMaterial.Ks.Scale(math.Pow(math.Max(reflectDir.Dot(camDir), 0.0), nearestMaterial.Ns)).Multiply(l.Col))
+				}
+				
+				r, g, b := colour.RGB()
+				surface.Set(i, j, color.RGBA{R: r, G: g, B: b, A: 0x00})
 			}
 		}
 	}
@@ -55,19 +71,24 @@ func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
 	
 	// Start the screen.
-	window, surface := screen.StartScreen("Sequential Ray-Tracer", 960, 540)
+	window, surface := screen.StartScreen("Sequential Ray-Tracer", 96, 54)
 	defer screen.StopScreen(window)
+	
+	// Load some objects in.
+	obj, err := state.ObjectFromFile("capsule.obj")
+	obj.Pos = geom.Vector{1.0, 1.0, 1.0}
+	if err != nil {
+		panic(err)
+	}
 	
 	// Create an environment (should be able to load this from a JSON file or something).
 	env := state.Environment{
-		Objs: []geom.Triangle{
-			//geom.Triangle{geom.Vector{0, 0, 1}, geom.Vector{2, 0, 3}, geom.Vector{1, 2, 2}, geom.Vector{}, geom.Vector{}, geom.Vector{}},
-			geom.Triangle{geom.Vector{0, 0, 0}, geom.Vector{2, 0, 0}, geom.Vector{0, 2, 0}, geom.Vector{1, 0, 0}, geom.Vector{0, 1, 0}, geom.Vector{0, 0, 1}},
-			//geom.Triangle{geom.Vector{-2, 0, -0.75}, geom.Vector{-0.5, 0.25, 0.25}, geom.Vector{-1, 1.75, 0}, geom.Vector{}, geom.Vector{}, geom.Vector{}},
-			//geom.Triangle{geom.Vector{-2, 0, -2}, geom.Vector{0, 0, 0}, geom.Vector{0, 2, 0}, geom.Vector{}, geom.Vector{}, geom.Vector{}},
+		Objs: []state.Object{
+			obj,
 		},
 		Lights: []state.Light{
-			state.Light{Pos: geom.Vector{0, 0, 0}, Col: state.RGB{0xFF, 0xFF, 0xFF}},
+			state.Light{Pos: geom.Vector{0, 3.0, 10.0}, Col: state.NewRGB(0xB0, 0xB0, 0xB0)},
+			state.Light{Pos: geom.Vector{0, -3.0, 10.0}, Col: state.NewRGB(0x80, 0x40, 0x40)},
 		},
 		Cam: state.NewCamera(geom.Vector{1, 1, -2}, geom.Vector{0, 0, 1}, math.Pi / 3.0),
 	}
