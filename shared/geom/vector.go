@@ -1,4 +1,4 @@
-// Package geom provides shared geometry functionality for use by workers and the master.
+// Package geom provides shared geometry objects for use by workers and the master.
 package geom
 
 import "math"

@@ -1,4 +1,4 @@
-// Package geom provides shared geometry functionality for use by workers and the master.
+// Package geom provides shared geometry objects for use by workers and the master.
 package geom
 
 // Triangle represents a triangle in 3-dimensional space.

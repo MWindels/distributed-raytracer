@@ -3,9 +3,11 @@ package main
 import (
 	"github.com/veandco/go-sdl2/sdl"
 	"github.com/mwindels/distributed-raytracer/shared/geom"
+	"github.com/mwindels/distributed-raytracer/shared/colour"
 	"github.com/mwindels/distributed-raytracer/shared/state"
 	"github.com/mwindels/distributed-raytracer/shared/screen"
 	"github.com/mwindels/distributed-raytracer/shared/input"
+	"github.com/mwindels/distributed-raytracer/worker/shared/tracer"
 	"image/color"
 	"math/rand"
 	"time"
@@ -13,49 +15,16 @@ import (
 )
 
 // draw draws an environment to the screen.
-func draw(window *sdl.Window, surface *sdl.Surface, env state.Environment) {
+func draw(window *sdl.Window, surface *sdl.Surface, env *state.Environment) {
 	// Clear the screen.
 	surface.FillRect(nil, 0)
 	
 	// For every pixel on screen...
-	for i := 0; i < int(surface.W); i++ {
-		for j := 0; j < int(surface.H); j++ {
-			// Determine where the pixel is on the projection plane.
-			rayPos := screen.PixelToPoint(i, j, int(surface.W), int(surface.H), env.Cam)
-			
-			// Search for intersections with every object.
-			// We can probably do better than a linear search with octrees or k-d trees.
-			var nearestDistance float64
-			var nearestObject *state.Object = nil
-			var nearestIntersect geom.Vector
-			var nearestNormal geom.Vector
-			var nearestMaterial state.Material
-			for k := 0; k < len(env.Objs); k++ {
-				if intersect, normal, material, hit := env.Objs[k].Intersection(env.Cam.Pos, rayPos.Sub(env.Cam.Pos)); hit {
-					intersectDistance := intersect.Sub(env.Cam.Pos).Len()
-					if nearestObject == nil || intersectDistance < nearestDistance {
-						nearestDistance = intersectDistance
-						nearestObject = &env.Objs[k]
-						nearestIntersect = intersect
-						nearestNormal = normal
-						nearestMaterial = material
-					}
-				}
-			}
-			
+	width, height := int(surface.W), int(surface.H)
+	for i := 0; i < width; i++ {
+		for j := 0; j < height; j++ {
 			// If an object was hit, colour a pixel.
-			if nearestObject != nil {
-				// Use Phong shading to determine colour at the intersection point.
-				colour := nearestMaterial.Ka
-				for _, l := range env.Lights {
-					lightDir := l.Pos.Sub(nearestIntersect).Norm()
-					reflectDir := nearestNormal.Scale(2 * lightDir.Dot(nearestNormal)).Sub(lightDir)
-					camDir := env.Cam.Pos.Sub(nearestIntersect).Norm()
-					
-					colour = colour.Add(nearestMaterial.Kd.Scale(math.Max(lightDir.Dot(nearestNormal), 0.0)).Multiply(l.Col))
-					colour = colour.Add(nearestMaterial.Ks.Scale(math.Pow(math.Max(reflectDir.Dot(camDir), 0.0), nearestMaterial.Ns)).Multiply(l.Col))
-				}
-				
+			if colour, valid := tracer.Trace(i, j, width, height, env); valid {
 				r, g, b := colour.RGB()
 				surface.Set(i, j, color.RGBA{R: r, G: g, B: b, A: 0x00})
 			}
@@ -71,12 +40,17 @@ func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
 	
 	// Start the screen.
-	window, surface := screen.StartScreen("Sequential Ray-Tracer", 96, 54)
+	window, surface := screen.StartScreen("Sequential Ray-Tracer", 960/2, 540/2)
 	defer screen.StopScreen(window)
 	
 	// Load some objects in.
-	obj, err := state.ObjectFromFile("capsule.obj")
-	obj.Pos = geom.Vector{1.0, 1.0, 1.0}
+	obj, err := state.ObjectFromFile("box.obj")
+	obj.Pos = geom.Vector{1.0, 1.0, -1.0}
+	if err != nil {
+		panic(err)
+	}
+	obj2, err := state.ObjectFromFile("box.obj")
+	obj2.Pos = geom.Vector{1.0, 1.0, 2.0}
 	if err != nil {
 		panic(err)
 	}
@@ -84,13 +58,13 @@ func main() {
 	// Create an environment (should be able to load this from a JSON file or something).
 	env := state.Environment{
 		Objs: []state.Object{
-			obj,
+			obj, obj2,
 		},
 		Lights: []state.Light{
-			state.Light{Pos: geom.Vector{0, 3.0, 10.0}, Col: state.NewRGB(0xB0, 0xB0, 0xB0)},
-			state.Light{Pos: geom.Vector{0, -3.0, 10.0}, Col: state.NewRGB(0x80, 0x40, 0x40)},
+			state.Light{Pos: geom.Vector{0, 3.0, 10.0}, Col: colour.NewRGB(0xB0, 0xB0, 0xB0)},
+			state.Light{Pos: geom.Vector{0, -3.0, 10.0}, Col: colour.NewRGB(0x80, 0x40, 0x40)},
 		},
-		Cam: state.NewCamera(geom.Vector{1, 1, -2}, geom.Vector{0, 0, 1}, math.Pi / 3.0),
+		Cam: state.NewCamera(geom.Vector{1, 1, 5}, geom.Vector{0, 0, -1}, math.Pi / 3.0),
 	}
 	
 	// Run the input/update/render loop.
@@ -178,7 +152,7 @@ func main() {
 		}
 		
 		// Draw the screen.
-		draw(window, surface, env)
+		draw(window, surface, &env)
 		
 		// If there's still time before the next frame needs to be drawn, wait.
 		currentUpdate = sdl.GetTicks()
