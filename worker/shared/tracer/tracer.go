@@ -5,6 +5,7 @@ import (
 	"github.com/mwindels/distributed-raytracer/shared/geom"
 	"github.com/mwindels/distributed-raytracer/shared/colour"
 	"github.com/mwindels/distributed-raytracer/shared/state"
+	"github.com/mwindels/rtreego"
 	"math"
 )
 
@@ -23,15 +24,17 @@ func pixelToPoint(i, j, width, height int, cam state.Camera) geom.Vector {
 // trace traces a single ray with a position and a direction.
 // This function returns the nearest intersection point, and an associated normal vector and material.
 // The last return value is whether an intersection exists.
-func trace(rayPos, rayDir geom.Vector, env *state.Environment) (geom.Vector, geom.Vector, state.Material, bool) {
-	// Search for objects intersected by the ray.
-	// Currently using linear searching for the objects, could use an R-Tree.
+func trace(rOrigin, rDir geom.Vector, env *state.Environment) (geom.Vector, geom.Vector, state.Material, bool) {
 	nearestExists := false
 	var nearestDistance float64
 	var nearestIntersect, nearestNormal geom.Vector
 	var nearestMaterial state.Material
-	for _, o := range env.Objs {
-		if intersect, normal, material, hit := o.Intersection(rayPos, rayDir); hit {
+	for _, s := range env.Objs.SearchCondition(func(nbb *rtreego.Rect) bool {return geom.NewBox(nbb).Intersect(rOrigin, rDir)}) {
+		// Convert the rtreego.Spatial s to an object.
+		o := s.(*state.Object)
+		
+		// Check if the ray intersects this object.
+		if intersect, normal, material, hit := o.Intersection(rOrigin, rDir); hit {
 			intersectDistance := intersect.Sub(env.Cam.Pos).Len()
 			if !nearestExists || intersectDistance < nearestDistance {
 				nearestExists = true

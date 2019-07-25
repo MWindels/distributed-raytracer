@@ -8,6 +8,7 @@ import (
 	"github.com/mwindels/distributed-raytracer/shared/screen"
 	"github.com/mwindels/distributed-raytracer/shared/input"
 	"github.com/mwindels/distributed-raytracer/worker/shared/tracer"
+	"github.com/mwindels/rtreego"
 	"image/color"
 	"math/rand"
 	"time"
@@ -40,16 +41,16 @@ func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
 	
 	// Start the screen.
-	window, surface := screen.StartScreen("Sequential Ray-Tracer", 960/2, 540/2)
+	window, surface := screen.StartScreen("Sequential Ray-Tracer", 960/4, 540/4)
 	defer screen.StopScreen(window)
 	
 	// Load some objects in.
-	obj, err := state.ObjectFromFile("box.obj")
-	obj.Pos = geom.Vector{1.0, 1.0, -1.0}
+	obj1, err := state.ObjectFromFile("capsule.obj")
+	obj1.Pos = geom.Vector{1.0, 1.0, -1.0}
 	if err != nil {
 		panic(err)
 	}
-	obj2, err := state.ObjectFromFile("box.obj")
+	obj2, err := state.ObjectFromFile("monkey.obj")
 	obj2.Pos = geom.Vector{1.0, 1.0, 2.0}
 	if err != nil {
 		panic(err)
@@ -57,12 +58,11 @@ func main() {
 	
 	// Create an environment (should be able to load this from a JSON file or something).
 	env := state.Environment{
-		Objs: []state.Object{
-			obj, obj2,
-		},
+		Objs: rtreego.NewTree(3, 2, 5, obj1, obj2),
 		Lights: []state.Light{
 			state.Light{Pos: geom.Vector{0, 3.0, 10.0}, Col: colour.NewRGB(0xB0, 0xB0, 0xB0)},
-			state.Light{Pos: geom.Vector{0, -3.0, 10.0}, Col: colour.NewRGB(0x80, 0x40, 0x40)},
+			//state.Light{Pos: geom.Vector{0, -3.0, 10.0}, Col: colour.NewRGB(0x80, 0x40, 0x40)},
+			//state.Light{Pos: geom.Vector{0, 0.0, -10.0}, Col: colour.NewRGB(0x60, 0x60, 0x60)},
 		},
 		Cam: state.NewCamera(geom.Vector{1, 1, 5}, geom.Vector{0, 0, -1}, math.Pi / 3.0),
 	}
