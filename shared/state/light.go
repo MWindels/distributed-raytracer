@@ -11,3 +11,9 @@ type Light struct {
 	Pos geom.Vector
 	Col colour.RGB
 }
+
+// StoredLight is used to (un)marshal light data to/from the JSON format.
+type StoredLight struct {
+	Pos geom.Vector			`json:"pos"`
+	Col colour.StoredRGB	`json:"col"`
+}

@@ -9,6 +9,13 @@ type RGB struct {
 	r, g, b float64
 }
 
+// StoredRGB is used to (un)marshal colour data to/from the JSON format.
+type StoredRGB struct {
+	R uint8	`json:"r"`
+	G uint8	`json:"g"`
+	B uint8	`json:"b"`
+}
+
 // NewRGB returns a new RGB object with the specified colours.
 func NewRGB(r, g, b uint8) RGB {
 	return RGB{r: float64(r) / 255.0, g: float64(g) / 255.0, b: float64(b) / 255.0}

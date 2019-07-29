@@ -8,9 +8,9 @@ type Triangle struct {
 	P2 Vector
 	P3 Vector
 	
-	N1 Vector	// The vertex normal for p1.
-	N2 Vector	// The vertex normal for p2.
-	N3 Vector	// The vertex normal for p3.
+	N1 Vector	// The vertex normal for P1.
+	N2 Vector	// The vertex normal for P2.
+	N3 Vector	// The vertex normal for P3.
 }
 
 // BaryCoords represents the barycentric coordinates of some point (I) on a triangle.
@@ -46,17 +46,17 @@ func (t Triangle) Intersection(rOrigin, rDir Vector) (Vector, BaryCoords, bool) 
 	if incidence != 0.0 {
 		p1Or := rOrigin.Sub(t.P1)
 		
-		// Compute the ratio for the triangle defined by all points except p2.
+		// Compute the ratio for the triangle defined by all points except P2.
 		r2 := p1Or.Dot(p1p3.Cross(negativeDir)) / incidence
 		
 		// If the ratio is positive and within [0, 1], continue.
 		if 0.0 <= r2 && r2 <= 1.0 {
-			// Compute the ratio for the triangle defined by all points except p3.
+			// Compute the ratio for the triangle defined by all points except P3.
 			r3 := p1p2.Dot(p1Or.Cross(negativeDir)) / incidence
 			
 			// If the sum of the ratios is positive and within [0, 1], continue.
 			if 0.0 <= r2 + r3 && r2 + r3 <= 1.0 {
-				// Compute the ratio for the triangle defined by all points except p1.
+				// Compute the ratio for the triangle defined by all points except P1.
 				r1 := 1.0 - r2 - r3
 				
 				// If all barycentric coordinates are non-negative, then t has been intersected.

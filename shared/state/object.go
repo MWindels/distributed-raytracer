@@ -62,6 +62,12 @@ type Object struct {
 	Pos geom.Vector
 }
 
+// StoredObject is used to (un)marshal object data to/from the JSON format.
+type StoredObject struct {
+	Model string	`json:"model"`
+	Pos geom.Vector	`json:"pos"`
+}
+
 // ObjectFromFile returns a new Object based on a provided OBJ file.
 func ObjectFromFile(path string) (*Object, error) {
 	options := gwob.ObjParserOptions{LogStats: true, Logger: func(s string) {fmt.Println(s)}, IgnoreNormals: false}
@@ -75,7 +81,7 @@ func ObjectFromFile(path string) (*Object, error) {
 	// Read in the material associated with the object.
 	inputMatlib := gwob.NewMaterialLib()
 	if len(inputObj.Mtllib) > 0 {
-		inputMatlib, err = gwob.ReadMaterialLibFromFile(inputObj.Mtllib, &options)
+		inputMatlib, err = gwob.ReadMaterialLibFromFile(relativePath(path, inputObj.Mtllib), &options)
 		if err != nil {
 			return nil, err
 		}

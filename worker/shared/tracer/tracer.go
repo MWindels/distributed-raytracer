@@ -16,9 +16,9 @@ func pixelToPoint(i, j, width, height int, cam state.Camera) geom.Vector {
 	halfWidth, halfHeight := width / 2, height / 2
 	projHalfWidth := math.Tan(cam.Fov / 2.0)
 	projHalfHeight := projHalfWidth * float64(height) / float64(width)
-	iOffset := cam.Left.Scale(projHalfWidth * (float64(halfWidth - i) - 0.5) / float64(halfWidth))
-	jOffset := cam.Up.Scale(projHalfHeight * (float64(halfHeight - j) - 0.5) / float64(halfHeight))
-	return cam.Pos.Add(cam.Forward).Add(iOffset).Add(jOffset)
+	iOffset := cam.Left().Scale(projHalfWidth * (float64(halfWidth - i) - 0.5) / float64(halfWidth))
+	jOffset := cam.Up().Scale(projHalfHeight * (float64(halfHeight - j) - 0.5) / float64(halfHeight))
+	return cam.Pos.Add(cam.Forward()).Add(iOffset).Add(jOffset)
 }
 
 // trace traces a single ray with a position and a direction.
