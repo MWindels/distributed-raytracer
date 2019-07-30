@@ -83,7 +83,11 @@ func ObjectFromFile(path string) (*Object, error) {
 	if len(inputObj.Mtllib) > 0 {
 		inputMatlib, err = gwob.ReadMaterialLibFromFile(relativePath(path, inputObj.Mtllib), &options)
 		if err != nil {
-			return nil, err
+			// If the material can't be found at the relative path, try the absolute path.
+			inputMatlib, err = gwob.ReadMaterialLibFromFile(inputObj.Mtllib, &options)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	

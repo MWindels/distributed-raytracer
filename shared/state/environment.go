@@ -48,7 +48,11 @@ func EnvironmentFromFile(path string) (Environment, error) {
 		// Read in the current object.
 		outObj, err := ObjectFromFile(relativePath(path, inObj.Model))
 		if err != nil {
-			return Environment{}, err
+			// If we can't find the object at the relative path, try the absolute path.
+			outObj, err = ObjectFromFile(inObj.Model)
+			if err != nil {
+				return Environment{}, err
+			}
 		}
 		
 		// Update the current object's position.
