@@ -7,10 +7,8 @@ import (
 	"github.com/mwindels/distributed-raytracer/shared/input"
 	"github.com/mwindels/distributed-raytracer/worker/shared/tracer"
 	"image/color"
-	"math/rand"
 	"strconv"
-	"time"
-	"fmt"
+	"log"
 	"os"
 )
 
@@ -36,36 +34,35 @@ func draw(window *sdl.Window, surface *sdl.Surface, env *state.Environment) {
 }
 
 func main() {
-	// Seed the rand package.
-	rand.Seed(time.Now().UTC().UnixNano())
-	
 	// Make sure we have enough parameters.
 	if len(os.Args) != 4 {
-		fmt.Println("Improper parameters.  This program requires the parameters:"+
+		log.Fatalln("Improper parameters.  This program requires the parameters:"+
 			"\n\t(1) environment file path"+
 			"\n\t(2) window width"+
 			"\n\t(3) window height")
-		os.Exit(1)
 	}
 	
 	// Load in the environment.
 	env, err := state.EnvironmentFromFile(os.Args[1])
 	if err != nil {
-		panic(err)
+		log.Fatalf("Could not read in environment \"%s\": %v.\n", os.Args[1], err)
 	}
 	
 	// Get the width and height of the screen.
 	width, err := strconv.ParseUint(os.Args[2], 10, 64)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Could not parse window width \"%s\": %v.\n", os.Args[2], err)
 	}
 	height, err := strconv.ParseUint(os.Args[3], 10, 64)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Could not parse window height \"%s\": %v.\n", os.Args[3], err)
 	}
 	
 	// Start the screen.
-	window, surface := screen.StartScreen("Sequential Ray-Tracer", int(width), int(height))
+	window, surface, err := screen.StartScreen("Sequential Ray-Tracer", int(width), int(height))
+	if err != nil {
+		log.Fatalf("Could not start screen: %v.\n", err)
+	}
 	defer screen.StopScreen(window)
 	
 	// Run the input/update/render loop.

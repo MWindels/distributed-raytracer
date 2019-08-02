@@ -4,17 +4,35 @@ package comms;
 
 //import "google/protobuf/any.proto";
 
+// WorkerLink represents information the master needs to communicate orders to a worker.
+message WorkerLink {
+	uint32 port = 1;
+}
+
+// MasterState represents the initial state a worker needs to start accepting orders.
+message MasterState {
+	bytes state = 1;
+	uint32 frame = 2;
+	uint32 screenWidth = 3;
+	uint32 screenHeight = 4;
+}
+
+// Registration is used by the master to register workers.
+service Registration {
+	rpc Register(WorkerLink) returns (MasterState);
+}
+
+// WorkOrder represents the data needed to perform ray tracing.
 message WorkOrder {
 	uint32 x = 1;
 	uint32 y = 2;
 	uint32 width = 3;
 	uint32 height = 4;
-	uint32 screenWidth = 5;
-	uint32 screenHeight = 6;
-	bytes state = 7;
-	//repeated google.protobuf.Any updates = 8;
+	uint32 frame = 5;
+	//repeated google.protobuf.Any updates = 6;
 }
 
+// TraceResults represents the colour data returned from ray tracing.
 message TraceResults {
 	message Colour {
 		uint32 r = 1;
@@ -24,6 +42,7 @@ message TraceResults {
 	repeated Colour results = 1;
 }
 
+// Trace is used by the workers to perform ray tracing.
 service Trace {
 	rpc BulkTrace(WorkOrder) returns (TraceResults);
 }

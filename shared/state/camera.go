@@ -3,10 +3,18 @@ package state
 
 import (
 	"github.com/mwindels/distributed-raytracer/shared/geom"
+	"encoding/gob"
 	"math/rand"
+	"bytes"
 	"math"
+	"time"
 	"fmt"
 )
+
+func init() {
+	rand.Seed(time.Now().UTC().UnixNano())
+	gob.Register(Camera{})
+}
 
 // Camera represents a camera in 3-dimensional space.
 type Camera struct {
@@ -143,4 +151,53 @@ func (c *Camera) Pitch(theta float64) {
 		c.forward = c.forward.Rotate(c.left, theta).Norm()
 		c.up = c.left.Cross(c.forward).Norm()
 	}
+}
+
+// MarshalBinary converts a camera into a binary representation.
+func (c Camera) MarshalBinary() ([]byte, error) {
+	// Set up the binary encoder.
+	writer := bytes.Buffer{}
+	encoder := gob.NewEncoder(&writer)
+	
+	// Encode the camera's position, forward vector, and fov.
+	if err := encoder.Encode(c.Pos); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(c.forward); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(c.Fov); err != nil {
+		return nil, err
+	}
+	
+	return writer.Bytes(), nil
+}
+
+// UnmarshalBinary derives a camera from its binary representation.
+func (c *Camera) UnmarshalBinary(data []byte) error {
+	// Set up the binary decoder.
+	reader := bytes.NewBuffer(data)
+	decoder := gob.NewDecoder(reader)
+	
+	// Decode the camera's position, forward vector, and fov.
+	var pos, forward geom.Vector
+	var fov float64
+	if err := decoder.Decode(&pos); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&forward); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&fov); err != nil {
+		return err
+	}
+	
+	// Reconstruct the camera.
+	if rebuilt, err := NewCamera(pos, forward, fov); err == nil {
+		*c = rebuilt
+	}else{
+		return err
+	}
+	
+	return nil
 }

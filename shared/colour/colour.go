@@ -1,7 +1,15 @@
 // Package colour provides shared a colour object for use by workers and the master.
 package colour
 
-import "math"
+import (
+	"encoding/gob"
+	"bytes"
+	"math"
+)
+
+func init() {
+	gob.Register(RGB{})
+}
 
 // RGB represents a colour with red, green, and blue channels.
 // All channels are normalized so they're within the range [0, 1].
@@ -50,4 +58,50 @@ func (rgb RGB) RGBA() (uint32, uint32, uint32, uint32) {
 // RGB returns the three colour channels of an RGB object in the range [0, 255].
 func (rgb RGB) RGB() (uint8, uint8, uint8) {
 	return uint8(255 * rgb.r), uint8(255 * rgb.g), uint8(255 * rgb.b)
+}
+
+// MarshalBinary converts an RGB colour into a binary representation.
+func (rgb RGB) MarshalBinary() ([]byte, error) {
+	r, g, b := rgb.RGB()
+	
+	// Set up the binary encoder.
+	writer := bytes.Buffer{}
+	encoder := gob.NewEncoder(&writer)
+	
+	// Encode the colour's r, g, and b values.
+	if err := encoder.Encode(r); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(g); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(b); err != nil {
+		return nil, err
+	}
+	
+	return writer.Bytes(), nil
+}
+
+// UnmarshalBinary derives an RGB value from its binary representation.
+func (rgb *RGB) UnmarshalBinary(data []byte) error {
+	// Set up the binary decoder.
+	reader := bytes.NewBuffer(data)
+	decoder := gob.NewDecoder(reader)
+	
+	// Decode the colour's r, g, and b values.
+	var r, g, b uint8
+	if err := decoder.Decode(&r); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&g); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&b); err != nil {
+		return err
+	}
+	
+	// Reconstruct the colour.
+	*rgb = NewRGB(r, g, b)
+	
+	return nil
 }

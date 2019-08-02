@@ -1,7 +1,10 @@
 // Package screen provides screen-related functionality for use by the master or a sequential worker.
 package screen
 
-import "github.com/veandco/go-sdl2/sdl"
+import (
+	"github.com/veandco/go-sdl2/sdl"
+	"fmt"
+)
 
 // These constants are timing values related to screen-updating.
 const (
@@ -10,12 +13,12 @@ const (
 )
 
 // StartScreen initializes SDL2 and a new window.
-func StartScreen(name string, width, height int) (*sdl.Window, *sdl.Surface) {
+func StartScreen(name string, width, height int) (*sdl.Window, *sdl.Surface, error) {
 	complete := false
 	
 	// Start SDL2.
 	if err := sdl.Init(sdl.INIT_VIDEO); err != nil {
-		panic(err)
+		return nil, nil, err
 	}
 	defer func() {
 		if !complete {
@@ -26,7 +29,7 @@ func StartScreen(name string, width, height int) (*sdl.Window, *sdl.Surface) {
 	// Create new window.
 	window, err := sdl.CreateWindow(name, sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, int32(width), int32(height), sdl.WINDOW_SHOWN)
 	if err != nil {
-		panic(err)
+		return nil, nil, err
 	}
 	defer func() {
 		if !complete {
@@ -37,16 +40,16 @@ func StartScreen(name string, width, height int) (*sdl.Window, *sdl.Surface) {
 	// Get the screen from the new window.
 	surface, err := window.GetSurface()
 	if err != nil {
-		panic(err)
+		return nil, nil, err
 	}
 	
 	// Set mouse mode to relative.
 	if sdl.SetRelativeMouseMode(true) != 0 {
-		panic("Relative mouse mode is not supported!")
+		return nil, nil, fmt.Errorf("Relative mouse mode is not supported.")
 	}
 	
 	complete = true
-	return window, surface
+	return window, surface, nil
 }
 
 // StopScreen closes SDL2 and some window.

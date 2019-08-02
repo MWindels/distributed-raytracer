@@ -6,9 +6,16 @@ import (
 	"github.com/mwindels/distributed-raytracer/shared/colour"
 	"github.com/mwindels/rtreego"
 	"github.com/mwindels/gwob"
+	"encoding/gob"
+	"bytes"
 	"math"
-	"fmt"
+	"log"
 )
+
+func init() {
+	gob.Register(face{})
+	gob.Register(Object{})
+}
 
 // This constant is the lowest possible size of a bounding box in any dimension.
 const boundEpsilon float64 = 0.0001
@@ -51,6 +58,47 @@ func (f face) Bounds() *rtreego.Rect {
 	return bbox
 }
 
+// MarshalBinary converts a face into a binary representation.
+func (f face) MarshalBinary() ([]byte, error) {
+	// Set up the binary encoder.
+	writer := bytes.Buffer{}
+	encoder := gob.NewEncoder(&writer)
+	
+	// Encode the face's vertex, vertex normal, and material indices.
+	// We don't store the object pointer, because it means nothing without the object.
+	if err := encoder.Encode(f.verts); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(f.vertNorms); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(f.mat); err != nil {
+		return nil, err
+	}
+	
+	return writer.Bytes(), nil
+}
+
+// UnmarshalBinary derives a face from its binary representation.
+func (f *face) UnmarshalBinary(data []byte) error {
+	// Set up the binary decoder.
+	reader := bytes.NewBuffer(data)
+	decoder := gob.NewDecoder(reader)
+	
+	// Decode the face's vertex, vertex normal, and material indices.
+	if err := decoder.Decode(&f.verts); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&f.vertNorms); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&f.mat); err != nil {
+		return err
+	}
+	
+	return nil
+}
+
 // Object represents a triangulated (3D) polygonal mesh with various material properties.
 type Object struct {
 	vertices []geom.Vector		// The vertices of this object.
@@ -70,7 +118,7 @@ type StoredObject struct {
 
 // ObjectFromFile returns a new Object based on a provided OBJ file.
 func ObjectFromFile(path string) (*Object, error) {
-	options := gwob.ObjParserOptions{LogStats: true, Logger: func(s string) {fmt.Println(s)}, IgnoreNormals: false}
+	options := gwob.ObjParserOptions{LogStats: true, Logger: func(s string) {log.Println(s)}, IgnoreNormals: false}
 	
 	// Read in the object from the file.
 	inputObj, err := gwob.NewObjFromFile(path, &options)
@@ -242,4 +290,69 @@ func (o Object) Intersection(rOrigin, rDir geom.Vector) (geom.Vector, geom.Vecto
 	}
 	
 	return nearestIntersect.Add(o.Pos), nearestVertexNormal, nearestMaterial, hasNearest
+}
+
+// MarshalBinary converts an object into a binary representation.
+func (o Object) MarshalBinary() ([]byte, error) {
+	// Set up the binary encoder.
+	writer := bytes.Buffer{}
+	encoder := gob.NewEncoder(&writer)
+	
+	// Encode the object's vertices, vertex normals, faces, materials, and the position.
+	if err := encoder.Encode(o.vertices); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(o.vertexNormals); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(o.faces.SearchCondition(func(nbb *rtreego.Rect) bool {return true})); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(o.materials); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(o.Pos); err != nil {
+		return nil, err
+	}
+	
+	return writer.Bytes(), nil
+}
+
+// UnmarshalBinary derives an object from its binary representation.
+func (o *Object) UnmarshalBinary(data []byte) error {
+	// Set up the binary decoder.
+	reader := bytes.NewBuffer(data)
+	decoder := gob.NewDecoder(reader)
+	
+	// Decode the object's vertices, vertex normals, faces, materials, and the position.
+	var faces []rtreego.Spatial
+	if err := decoder.Decode(&o.vertices); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&o.vertexNormals); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&faces); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&o.materials); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&o.Pos); err != nil {
+		return err
+	}
+	
+	// Rebuild an R-Tree for the faces.
+	o.faces = rtreego.NewTree(3, 2, 5)
+	
+	// Because our faces have an object associated with them, we need to add a pointer to that object.
+	// Then, add the face value to the faces R-Tree.
+	for _, s := range faces {
+		f := s.(face)
+		f.obj = o
+		
+		o.faces.Insert(f)
+	}
+	
+	return nil
 }

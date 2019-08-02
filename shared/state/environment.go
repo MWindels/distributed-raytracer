@@ -6,8 +6,14 @@ import (
 	"github.com/mwindels/distributed-raytracer/shared/colour"
 	"github.com/mwindels/rtreego"
 	"encoding/json"
+	"encoding/gob"
 	"io/ioutil"
+	"bytes"
 )
+
+func init() {
+	gob.Register(Environment{})
+}
 
 // This variable represents the global up vector.
 // Because Go doesn't support constant structures, this has to be a variable.
@@ -89,4 +95,52 @@ func EnvironmentFromFile(path string) (Environment, error) {
 	}
 	
 	return env, nil
+}
+
+// MarshalBinary converts an environment into a binary representation.
+func (e Environment) MarshalBinary() ([]byte, error) {
+	// Set up the binary encoder.
+	writer := bytes.Buffer{}
+	encoder := gob.NewEncoder(&writer)
+	
+	// Encode the environment's objects, lights, and camera.
+	if err := encoder.Encode(e.Objs.SearchCondition(func(nbb *rtreego.Rect) bool {return true})); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(e.Lights); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(e.Cam); err != nil {
+		return nil, err
+	}
+	
+	return writer.Bytes(), nil
+}
+
+// UnmarshalBinary derives an environment from its binary representation.
+func (e *Environment) UnmarshalBinary(data []byte) error {
+	// Set up the binary decoder.
+	reader := bytes.NewBuffer(data)
+	decoder := gob.NewDecoder(reader)
+	
+	// Decode the environment's objects, lights, and camera.
+	var objects []rtreego.Spatial
+	if err := decoder.Decode(&objects); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&e.Lights); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&e.Cam); err != nil {
+		return err
+	}
+	
+	// Rebuild an R-Tree for the objects.
+	e.Objs = rtreego.NewTree(3, 2, 5)
+	for _, s := range objects {
+		o := s.(Object)
+		e.Objs.Insert(&o)
+	}
+	
+	return nil
 }
