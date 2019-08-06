@@ -49,10 +49,10 @@ func (a RGB) Multiply(b RGB) RGB {
 	return RGB{r: a.r * b.r, g: a.g * b.g, b: a.b * b.b}
 }
 
-// RGBA returns the three colour channels of an RGB object in the range [0, 255], and 0 for the alpha channel.
+// RGBA returns the three colour channels of an RGB object in the range [0, 2^16], and 2^16 for the alpha channel.
 // This function allows RGB objects to be used with the Color (image/color) interface.
 func (rgb RGB) RGBA() (uint32, uint32, uint32, uint32) {
-	return uint32(255 * rgb.r), uint32(255 * rgb.g), uint32(255 * rgb.b), uint32(0)
+	return uint32(0xFFFF * rgb.r), uint32(0xFFFF * rgb.g), uint32(0xFFFF * rgb.b), uint32(0xFFFF)
 }
 
 // RGB returns the three colour channels of an RGB object in the range [0, 255].

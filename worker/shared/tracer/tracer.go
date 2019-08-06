@@ -24,7 +24,7 @@ func pixelToPoint(i, j, width, height int, cam state.Camera) geom.Vector {
 // trace traces a single ray with a position and a direction.
 // This function returns the nearest intersection point, and an associated normal vector and material.
 // The last return value is whether an intersection exists.
-func trace(rOrigin, rDir geom.Vector, env *state.Environment) (geom.Vector, geom.Vector, state.Material, bool) {
+func trace(rOrigin, rDir geom.Vector, env *state.EnvMutables) (geom.Vector, geom.Vector, state.Material, bool) {
 	nearestExists := false
 	var nearestDistance float64
 	var nearestIntersect, nearestNormal geom.Vector
@@ -50,7 +50,7 @@ func trace(rOrigin, rDir geom.Vector, env *state.Environment) (geom.Vector, geom
 }
 
 // phong calculates the colour of a point using Phong shading.
-func phong(intersect, normal geom.Vector, material state.Material, env *state.Environment) colour.RGB {
+func phong(intersect, normal geom.Vector, material state.Material, env *state.EnvMutables) colour.RGB {
 	// Start by adding the ambient lighting.
 	// Note: this should be multiplied by some global ambient intensity.
 	colour := material.Ka
@@ -78,7 +78,7 @@ func phong(intersect, normal geom.Vector, material state.Material, env *state.En
 
 // Trace traces a single ray through the pixel (i, j) and into a scene.
 // The parameters i and j must be in the ranges [0, width) and [0, height) respectively.
-func Trace(i, j, width, height int, env *state.Environment) (colour.RGB, bool) {
+func Trace(i, j, width, height int, env *state.EnvMutables) (colour.RGB, bool) {
 	// Find the centre of the pixel (i, j) on the projection plane.
 	screenIntersect := pixelToPoint(i, j, width, height, env.Cam)
 	

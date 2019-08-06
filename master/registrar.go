@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/mwindels/distributed-raytracer/shared/comms"
-	"github.com/mwindels/distributed-raytracer/shared/screen"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc"
 	"encoding/gob"
@@ -11,7 +10,6 @@ import (
 	"strings"
 	"unicode"
 	"bytes"
-	"time"
 	"net"
 	"log"
 	"fmt"
@@ -26,7 +24,6 @@ type Registrar struct {
 // Register registers a worker with the master.
 func (r *Registrar) Register(ctx context.Context, req *comms.WorkerLink) (*comms.MasterState, error) {
 	var err error = nil
-	var firstFrame uint
 	
 	// Get a writer and encoder ready for processing state.
 	writer := bytes.Buffer{}
@@ -42,12 +39,8 @@ func (r *Registrar) Register(ctx context.Context, req *comms.WorkerLink) (*comms
 	addr := strings.Join([]string{strings.TrimRightFunc(worker.Addr.String(), unicode.IsNumber), strconv.FormatUint(uint64(req.GetPort()), 10)}, "")
 	
 	func() {
-		r.sys.mu.Lock()
-		defer r.sys.mu.Unlock()
-		
-		// Add the worker to the workers map.
-		firstFrame = r.sys.frame
-		r.sys.workers[addr] = workerStats{lastFrameCompleted: firstFrame, lastFrameStarted: firstFrame}
+		r.sys.mu.RLock()
+		defer r.sys.mu.RUnlock()
 		
 		// Encode the scene state.
 		err = encoder.Encode(r.sys.scene)
@@ -58,34 +51,14 @@ func (r *Registrar) Register(ctx context.Context, req *comms.WorkerLink) (*comms
 		return nil, err
 	}
 	
-	// Spin off a thread that'll automatically remove the worker if they don't do enough work.
-	go func() {
-		for working := true; working; {
-			// Wait for a duration (this is a heuristic).
-			time.Sleep(time.Millisecond * time.Duration(maxUpdates * uint(screen.MsPerFrame)))
-			
-			func() {
-				r.sys.mu.Lock()
-				defer r.sys.mu.Unlock()
-				
-				if stats, exists := r.sys.workers[addr]; exists {
-					// If the worker has fallen too far behind, assume it has failed.
-					if r.sys.frame - stats.lastFrameStarted > uint(len(r.sys.updates)) {
-						// TODO: gracefully close the trace connection.
-						delete(r.sys.workers, addr)
-						working = false
-					}
-				}else{
-					working = false
-				}
-			}()
-		}
-	}()
+	// Add the worker to the workers map.
+	if err = r.sys.workers.Add(addr); err != nil {
+		return nil, err
+	}
 	
 	// Build up the repsonse.
 	stateData := comms.MasterState{
 		State: writer.Bytes(),
-		Frame: uint32(firstFrame),
 		ScreenWidth: uint32(r.screenWidth),
 		ScreenHeight: uint32(r.screenHeight),
 	}
@@ -94,9 +67,8 @@ func (r *Registrar) Register(ctx context.Context, req *comms.WorkerLink) (*comms
 }
 
 // newRegistrar sets up a new registration server.
-func newRegistrar(sys *system, screenWidth, screenHeight, registrationPort uint) {
+func newRegistrar(sys *system, server *grpc.Server, screenWidth, screenHeight, registrationPort uint) {
 	// Set up the registration server.
-	server := grpc.NewServer()
 	comms.RegisterRegistrationServer(server, &Registrar{sys: sys, screenWidth: screenWidth, screenHeight: screenHeight})
 	
 	// Create a listener for the workers.
@@ -107,6 +79,6 @@ func newRegistrar(sys *system, screenWidth, screenHeight, registrationPort uint)
 	
 	// Serve incoming registration orders.
 	if err = server.Serve(listener); err != nil {
-		log.Fatalf("Connection interrupted: %v.\n", err)
+		log.Fatalf("Registrar interrupted: %v.\n", err)
 	}
 }

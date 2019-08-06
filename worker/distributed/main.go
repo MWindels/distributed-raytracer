@@ -4,6 +4,7 @@ import (
 	"github.com/mwindels/distributed-raytracer/shared/comms"
 	"github.com/mwindels/distributed-raytracer/shared/state"
 	"github.com/mwindels/distributed-raytracer/worker/shared/tracer"
+	"github.com/golang/protobuf/ptypes/empty"
 	"google.golang.org/grpc"
 	"encoding/gob"
 	"context"
@@ -16,42 +17,83 @@ import (
 	"os"
 )
 
-// registrationTimeout controls how long to wait for a registration reply.
-const registrationTimeout uint = 10000
+// registerFrequency controls the minimum amount of time this worker will wait before trying to re-register itself after a failure.
+const registerFrequency uint = 500
+
+// traceTimeout controls how long this worker will wait for trace requests and heartbeats before closing its trace server.
+const traceTimeout uint = 10000
 
 // Tracer implements the comms.TraceServer interface.
 type Tracer struct {
-	frame uint
+	// No lock here because we never mutate this data.
 	scene state.Environment
 	screenWidth, screenHeight uint
+	resetTraceTimeout chan struct{}
+}
+
+// timeoutReset resets a tracer's trace timeout.
+func (t *Tracer) timeoutReset() {
+	defer func() {
+		recover()
+	}()
+	
+	// Try to reset the trace timeout.
+	// If the channel is closed, this will panic and return immediately.
+	t.resetTraceTimeout <- struct{}{}
 }
 
 // BulkTrace traces a batch of rays.
 func (t *Tracer) BulkTrace(ctx context.Context, req *comms.WorkOrder) (*comms.TraceResults, error) {
-	results := new(comms.TraceResults)
+	t.timeoutReset()
 	
-	// Update the scene's state.
-	// TODO...
+	// Set up this call's results.
+	width, height := req.GetX() + req.GetWidth(), req.GetY() + req.GetHeight()
+	results := &comms.TraceResults{
+		Results: make([]*comms.TraceResults_Colour, width * height, width * height),
+	}
 	
-	// Update the frame.
-	t.frame = uint(req.GetFrame())
+	// Decode the mutable state for this frame.
+	var diff state.EnvMutables
+	if req.GetDiff() != nil {
+		if err := gob.NewDecoder(bytes.NewBuffer(req.GetDiff())).Decode(&diff); err != nil {
+			return nil, err
+		}
+		
+		diff.LinkTo(t.scene)
+	}
 	
 	// For every pixel specified...
-	for i := req.GetX(); i < req.GetWidth(); i++ {
-		for j := req.GetY(); j < req.GetHeight(); j++ {
-			if colour, valid := tracer.Trace(int(i), int(j), int(t.screenWidth), int(t.screenHeight), &t.scene); valid {
-				// If an object was hit, return its colour.
-				r, g, b := colour.RGB()
-				resultColour := comms.TraceResults_Colour{R: uint32(r), G: uint32(g), B: uint32(b)}
-				results.Results = append(results.Results, &resultColour)
-			}else{
-				// If nothing was hit, return nothing.
-				results.Results = append(results.Results, nil)
+	for i := req.GetX(); i < width; i++ {
+		for j := req.GetY(); j < height; j++ {
+			// Set up a default colour.
+			var r, g, b uint8 = 0, 0, 0
+			
+			// Make sure the RPC hasn't been cancelled.
+			if err := ctx.Err(); err == context.Canceled {
+				return nil, err
+			}
+			
+			// If an object was hit, use its colour.
+			if objectColour, valid := tracer.Trace(int(i), int(j), int(t.screenWidth), int(t.screenHeight), &diff); valid {
+				r, g, b = objectColour.RGB()
+			}
+			
+			results.Results[i * height + j] = &comms.TraceResults_Colour{
+				R: uint32(r),
+				G: uint32(g),
+				B: uint32(b),
 			}
 		}
 	}
 	
 	return results, nil
+}
+
+// Heartbeat keeps the worker from disconnecting from the master.
+func (t *Tracer) Heartbeat(ctx context.Context, req *empty.Empty) (*empty.Empty, error) {
+	t.timeoutReset()
+	
+	return &empty.Empty{}, nil
 }
 
 // register registers this worker with the master at registerAddr for later communication on listenPort using the tracer it returns.
@@ -66,12 +108,8 @@ func register(registerAddr string, listenPort uint32) (Tracer, error) {
 	// Create a registration client.
 	client := comms.NewRegistrationClient(conn)
 	
-	// Create a timeout for the register operation.
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond * time.Duration(registrationTimeout))
-	defer cancel()
-	
 	// Attempt to register.
-	stateMsg, err := client.Register(ctx, &comms.WorkerLink{Port: listenPort})
+	stateMsg, err := client.Register(context.Background(), &comms.WorkerLink{Port: listenPort})
 	if err != nil {
 		return Tracer{}, err
 	}
@@ -86,7 +124,7 @@ func register(registerAddr string, listenPort uint32) (Tracer, error) {
 		return Tracer{}, fmt.Errorf("No scene data recieved.")
 	}
 	
-	return Tracer{frame: uint(stateMsg.GetFrame()), scene: newScene, screenWidth: uint(stateMsg.GetScreenWidth()), screenHeight: uint(stateMsg.GetScreenHeight())}, nil
+	return Tracer{scene: newScene, screenWidth: uint(stateMsg.GetScreenWidth()), screenHeight: uint(stateMsg.GetScreenHeight()), resetTraceTimeout: make(chan struct{})}, nil
 }
 
 func main() {
@@ -118,14 +156,30 @@ func main() {
 				log.Fatalf("Failed to listen on port \"%d\": %v.\n", orderPort, err)
 			}
 			
+			// Spin off a goroutine which closes the trace server if no requests come in within a timeout.
+			go func() {
+				for {
+					select{
+					case <-tracer.resetTraceTimeout:
+					case <-time.After(time.Millisecond * time.Duration(traceTimeout)):
+						close(tracer.resetTraceTimeout)
+						server.GracefulStop()
+						return
+					}
+				}
+			}()
+			
 			// Serve incoming work orders.
 			if err = server.Serve(listener); err != nil {
-				log.Fatalf("Connection interrupted: %v.\n", err)
+				log.Printf("Tracer interrupted: %v.\n", err)
 			}else{
-				log.Printf("Connection closed.\n")
+				log.Printf("Tracer timed out after recieving no orders or heartbeats.\n")
 			}
 		}else{
 			log.Printf("Failed to register: %v.\n", err)
 		}
+		
+		// Wait before trying to register again.
+		time.Sleep(time.Millisecond * time.Duration(registerFrequency))
 	}
 }

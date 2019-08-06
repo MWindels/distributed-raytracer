@@ -6,14 +6,13 @@ import (
 	"github.com/mwindels/distributed-raytracer/shared/screen"
 	"github.com/mwindels/distributed-raytracer/shared/input"
 	"github.com/mwindels/distributed-raytracer/worker/shared/tracer"
-	"image/color"
 	"strconv"
 	"log"
 	"os"
 )
 
 // draw draws an environment to the screen.
-func draw(window *sdl.Window, surface *sdl.Surface, env *state.Environment) {
+func draw(window *sdl.Window, surface *sdl.Surface, env *state.EnvMutables) {
 	// Clear the screen.
 	surface.FillRect(nil, 0)
 	
@@ -23,8 +22,7 @@ func draw(window *sdl.Window, surface *sdl.Surface, env *state.Environment) {
 		for j := 0; j < height; j++ {
 			// If an object was hit, colour a pixel.
 			if colour, valid := tracer.Trace(i, j, width, height, env); valid {
-				r, g, b := colour.RGB()
-				surface.Set(i, j, color.RGBA{R: r, G: g, B: b, A: 0x00})
+				surface.Set(i, j, colour)
 			}
 		}
 	}
@@ -66,6 +64,7 @@ func main() {
 	defer screen.StopScreen(window)
 	
 	// Run the input/update/render loop.
+	scene := env.Mutable()
 	var prevUpdate, currentUpdate uint32
 	for running, moveDirs, yaw, pitch := true, uint8(0), 0.0, 0.0; running; {
 		prevUpdate = sdl.GetTicks()
@@ -74,14 +73,14 @@ func main() {
 		running, moveDirs, yaw, pitch = input.HandleInputs(moveDirs, int(surface.W), int(surface.H))
 		
 		// If the camera needs to move, move it.
-		env.Cam.Move(0.1, moveDirs & input.MoveForward != 0, moveDirs & input.MoveBackward != 0, moveDirs & input.MoveLeftward != 0, moveDirs & input.MoveRightward != 0, moveDirs & input.MoveUpward != 0, moveDirs & input.MoveDownward != 0)
+		scene.Cam.Move(0.1, moveDirs & input.MoveForward != 0, moveDirs & input.MoveBackward != 0, moveDirs & input.MoveLeftward != 0, moveDirs & input.MoveRightward != 0, moveDirs & input.MoveUpward != 0, moveDirs & input.MoveDownward != 0)
 		
 		// If the camera needs to rotate, rotate it.
-		env.Cam.Yaw(yaw * env.Cam.Fov / 2.0)
-		env.Cam.Pitch(pitch * (float64(surface.H) / float64(surface.W)) * env.Cam.Fov / 2.0)
+		scene.Cam.Yaw(yaw * scene.Cam.Fov / 2.0)
+		scene.Cam.Pitch(pitch * (float64(surface.H) / float64(surface.W)) * scene.Cam.Fov / 2.0)
 		
 		// Draw the screen.
-		draw(window, surface, &env)
+		draw(window, surface, scene)
 		
 		// If there's still time before the next frame needs to be drawn, wait.
 		currentUpdate = sdl.GetTicks()
