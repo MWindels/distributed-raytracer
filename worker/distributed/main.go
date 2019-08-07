@@ -21,7 +21,7 @@ import (
 const registerFrequency uint = 500
 
 // traceTimeout controls how long this worker will wait for trace requests and heartbeats before closing its trace server.
-const traceTimeout uint = 10000
+const traceTimeout uint = 1000
 
 // Tracer implements the comms.TraceServer interface.
 type Tracer struct {

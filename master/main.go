@@ -11,15 +11,26 @@ import (
 	"google.golang.org/grpc"
 	"encoding/gob"
 	"strconv"
+	"reflect"
 	"bytes"
 	"sync"
 	"log"
 	"os"
 )
 
+// widthKernel and heightKernel both inform the recursion depth of the screen partitioning function.
+// If there are sufficient workers, these values represent the largest width and height a minimal partition piece can be.
+const (
+	widthKernel uint32 = 32
+	heightKernel uint32 = 32
+)
+
+// workerRedundancy controls how many workers are assigned to each partition of the screen.
+const workerRedundancy uint = 2
+
 // traceTimeout controls how long the master waits before rejecting a BulkTrace call.
 // This is a variable because the master may want to dynamically change it.
-var traceTimeout uint = 10000
+var traceTimeout uint = 1000
 
 // system represents the whole distributed system as the master sees it.
 type system struct {
@@ -29,6 +40,48 @@ type system struct {
 	workers pool.Pool
 }
 
+// partition recursively creates a list of work orders by partitioning an area.
+// The first return value is a slice of the original area's partitioned sub-areas.
+// The second return value is the number of leftover workers.
+func partition(area *comms.WorkOrder, workers uint, dimension uint) ([]comms.WorkOrder, uint) {
+	// If there aren't enough workers left to split the area in half, return.
+	if workers / workerRedundancy < 2 {
+		if workers > workerRedundancy {
+			return []comms.WorkOrder{*area}, workers % workerRedundancy
+		}else{
+			return []comms.WorkOrder{*area}, 0
+		}
+	}
+	
+	x, y := area.GetX(), area.GetY()
+	width, height := area.GetWidth(), area.GetHeight()
+	if width <= widthKernel && height <= heightKernel {
+		// If the area can't be partitioned any more, return.
+		return []comms.WorkOrder{*area}, workers - workerRedundancy
+	}else if width <= widthKernel {
+		// If the area can't be split vertically, split horizontally.
+		dimension = 1
+	}else if height <= heightKernel {
+		// If the area can't be split horizontally, split vertically.
+		dimension = 0
+	}
+	
+	// Compute the left and right areas.
+	var leftOrder, rightOrder *comms.WorkOrder
+	if dimension % 2 == 0 {
+		leftOrder = &comms.WorkOrder{X: x, Y: y, Width: width / 2, Height: height, Diff: area.GetDiff()}
+		rightOrder = &comms.WorkOrder{X: x + width / 2, Y: y, Width: width / 2 + width % 2, Height: height, Diff: area.GetDiff()}
+	}else{
+		leftOrder = &comms.WorkOrder{X: x, Y: y, Width: width, Height: height / 2, Diff: area.GetDiff()}
+		rightOrder = &comms.WorkOrder{X: x, Y: y + height / 2, Width: width, Height: height / 2 + height % 2, Diff: area.GetDiff()}
+	}
+	
+	// Find the partitions within the left and right areas.
+	left, remainder := partition(leftOrder, workers / 2 + workers % 2, (dimension + 1) % 2)
+	right, remainder := partition(rightOrder, workers / 2 + remainder, (dimension + 1) % 2)
+	return append(left, right...), remainder
+}
+
 // newCoordinator coordinates the drawing of a new frame.
 func newCoordinator(sys *system, diff []byte, frame uint, window *sdl.Window, surface *sdl.Surface, in <-chan struct{}, out chan<- struct{}) {
 	// Find the number of workers.
@@ -36,31 +89,89 @@ func newCoordinator(sys *system, diff []byte, frame uint, window *sdl.Window, su
 	numWorkers := sys.workers.Size()
 	
 	if numWorkers > 0 {
-		// TEMPORARY!
-		resultCh, err := sys.workers.Assign(&comms.WorkOrder{X: 0, Y: 0, Width: uint32(surface.W), Height: uint32(surface.H), Diff: diff}, traceTimeout)
-		if err == nil {
-			results := (<-resultCh).GetResults()
+		// Partition the screen.
+		partitions, _ := partition(&comms.WorkOrder{X: 0, Y: 0, Width: uint32(surface.W), Height: uint32(surface.H), Diff: diff}, numWorkers, 0)
+		
+		// Assign the partitions to workers.
+		resultMap := make(map[<-chan *comms.TraceResults]*comms.WorkOrder)
+		resultChs := make([]reflect.SelectCase, 0, workerRedundancy * uint(len(partitions)))
+		for _, p := range partitions {
+			var err error
+			assigned := false
 			
-			<-in
-			if results != nil {
-				surface.FillRect(nil, 0)
-				for i := 0; i < int(surface.W); i++ {
-					for j := 0; j < int(surface.H); j++ {
-						pixel := results[i * int(surface.H) + j]
-						surface.Set(i, j, colour.NewRGB(uint8(pixel.GetR()), uint8(pixel.GetG()), uint8(pixel.GetB())))
-					}
+			// Assign worker(s) to the current partition.
+			for i := uint(0); i < workerRedundancy; i++ {
+				if resultCh, err := sys.workers.Assign(&p, traceTimeout); err == nil {
+					resultMap[resultCh] = &p
+					resultChs = append(resultChs, reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(resultCh)})
+					assigned = true
 				}
-				window.UpdateSurface()
 			}
-			out <- struct{}{}
-		}else{
-			out <- <-in
+			
+			// If no workers could be assigned to this partition, skip the frame.
+			if !assigned {
+				<-in
+				log.Printf("Frame %d skipped, could not draw part of screen: %v.\n", frame, err)
+				out <- struct{}{}
+				return
+			}
 		}
-		// TEMPORARY!
+		
+		// Accumulate results.
+		orderMap := make(map[*comms.WorkOrder]*comms.TraceResults)
+		for len(orderMap) < len(partitions) {
+			// Wait for a worker to respond.
+			idx, value, success := reflect.Select(resultChs)
+			result := value.Interface().(*comms.TraceResults)
+			order := resultMap[resultChs[idx].Chan.Interface().(<-chan *comms.TraceResults)]
+			
+			// Update the order map with the new results.
+			if status, exists := orderMap[order]; exists {
+				if success && status == nil {
+					orderMap[order] = result
+				}
+			}else{
+				if success {
+					orderMap[order] = result
+				}else{
+					orderMap[order] = nil
+				}
+			}
+			
+			// Remove the worker from the working list.
+			resultChs = append(resultChs[:idx], resultChs[idx + 1:]...)
+		}
+		
+		// If any of the partitions could not be filled, skip the frame.
+		for _, r := range orderMap {
+			if r == nil {
+				<-in
+				log.Printf("Frame %d skipped, could not draw part of the screen.", frame)
+				out <- struct{}{}
+				return
+			}
+		}
+		
+		// Draw the frame.
+		<-in
+		surface.FillRect(nil, 0)
+		for o, r := range orderMap {
+			pixels := r.GetResults()
+			xFirst, xLast := int(o.GetX()), int(o.GetX() + o.GetWidth())
+			yFirst, yLast := int(o.GetY()), int(o.GetY() + o.GetHeight())
+			for i := xFirst; i < xLast; i++ {
+				for j := yFirst; j < yLast; j++ {
+					pixel := pixels[i * int(surface.H) + j]
+					surface.Set(i, j, colour.NewRGB(uint8(pixel.GetR()), uint8(pixel.GetG()), uint8(pixel.GetB())))
+				}
+			}
+		}
+		window.UpdateSurface()
+		out <- struct{}{}
 	}else{
 		// If there are no workers available, skip the frame.
 		<-in
-		log.Printf("No workers in pool, frame %d skipped.\n", frame)
+		log.Printf("Frame %d skipped, no workers in pool.\n", frame)
 		out <- struct{}{}
 	}
 }

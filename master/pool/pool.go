@@ -22,6 +22,8 @@ const HeartbeatTimeout uint = 500
 type worker struct {
 	connection *grpc.ClientConn
 	stopHeartbeats chan struct{}
+	closing bool
+	
 	tasks uint
 	index uint
 }
@@ -48,14 +50,9 @@ func (p *Pool) Destroy() {
 	defer p.mu.Unlock()
 	
 	// Close all the open connections.
-	for _, w := range p.heap {
-		w.connection.Close()
+	for a, w := range p.addresses {
+		p.remove(a, w)
 	}
-	
-	// Nil the contents of the pool.
-	// Any further attempts to modify the pool will cause panics.
-	p.heap = nil
-	p.addresses = nil
 }
 
 // Size returns the number of workers in the pool.
@@ -171,25 +168,31 @@ func (p *Pool) Assign(order *comms.WorkOrder, timeout uint) (<-chan *comms.Trace
 			// Attempt to trace.
 			results, err := client.BulkTrace(ctx, order)
 			if err == nil {
-				func() {
-					p.mu.Lock()
-					defer p.mu.Unlock()
-					
-					// Complete the task and re-arrange the heap.
-					// If assignee was taken out of the pool, bubbleUp will do nothing because the heap property was not invalidated.
-					assignee.tasks -= 1
-					p.bubbleUp(assignee)
-				}()
-				
 				out <- results
 			}else{
 				log.Printf("Failed to trace: %v.\n", err)
 			}
+			
+			func() {
+				p.mu.Lock()
+				defer p.mu.Unlock()
+				
+				// Complete the task and re-arrange the heap (if the assignee is still in it).
+				assignee.tasks -= 1
+				if assignee.index < uint(len(p.heap)) && p.heap[assignee.index] == assignee {
+					p.bubbleUp(assignee)
+				}
+				
+				// If this is the worker's last task, close the connection.
+				if assignee.closing && assignee.tasks == 0 {
+					assignee.connection.Close()
+				}
+			}()
 		}(resultsCh, comms.NewTraceClient(assignee.connection))
 		
 		return resultsCh, nil
 	}else{
-		return nil, fmt.Errorf("No workers to which task %v can be assigned.")
+		return nil, fmt.Errorf("No workers to which task %v can be assigned.", *order)
 	}
 }
 
@@ -209,8 +212,11 @@ func (p *Pool) remove(address string, w *worker) {
 		p.bubbleDown(p.heap[wIndex])
 	}
 	
-	// Disconnect from the worker.
-	w.connection.Close()
+	// Close the worker and disconnect if there are no remaining tasks.
+	w.closing = true
+	if w.tasks == 0 {
+		w.connection.Close()
+	}
 }
 
 // heartbeat periodically sends out heartbeat messages to a worker.
@@ -267,7 +273,7 @@ func (p *Pool) Add(address string) error {
 		}
 		
 		// Set up a new worker.
-		w := &worker{connection: conn, stopHeartbeats: make(chan struct{}), tasks: 0, index: uint(len(p.heap))}
+		w := &worker{connection: conn, stopHeartbeats: make(chan struct{}), closing: false, tasks: 0, index: uint(len(p.heap))}
 		
 		// Add the worker to the pool.
 		p.addresses[address] = w
