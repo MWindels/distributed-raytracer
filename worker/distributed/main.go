@@ -151,7 +151,7 @@ func main() {
 			comms.RegisterTraceServer(server, &tracer)
 			
 			// Create a listener for the master.
-			listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", orderPort))
+			listener, err := net.Listen("tcp", fmt.Sprintf(":%d", orderPort))
 			if err != nil {
 				log.Fatalf("Failed to listen on port \"%d\": %v.\n", orderPort, err)
 			}

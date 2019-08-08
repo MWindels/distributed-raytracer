@@ -21,8 +21,8 @@ import (
 // widthKernel and heightKernel both inform the recursion depth of the screen partitioning function.
 // If there are sufficient workers, these values represent the largest width and height a minimal partition piece can be.
 const (
-	widthKernel uint32 = 32
-	heightKernel uint32 = 32
+	widthKernel uint32 = 50
+	heightKernel uint32 = 50
 )
 
 // workerRedundancy controls how many workers are assigned to each partition of the screen.
@@ -218,7 +218,7 @@ func main() {
 	// Spin off the registration server.
 	registrar := grpc.NewServer()
 	defer registrar.GracefulStop()
-	go newRegistrar(&sys, registrar, uint(width), uint(height), uint(registrationPort))
+	go newRegistrar(&sys, registrar, uint(surface.W), uint(surface.H), uint(registrationPort))
 	
 	// Get the initial coordinator channel ready.
 	coordinatorIn := make(chan struct{}, 1)

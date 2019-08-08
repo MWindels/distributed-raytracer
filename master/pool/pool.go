@@ -16,7 +16,7 @@ import (
 const HeartbeatFrequency uint = 500
 
 // HeartbeatTimeout controls how long heartbeats are waited on before the associated worker is assumed to be disconnected.
-const HeartbeatTimeout uint = 500
+const HeartbeatTimeout uint = 1000
 
 // worker represents an entry in a pool.
 type worker struct {

@@ -72,7 +72,7 @@ func newRegistrar(sys *system, server *grpc.Server, screenWidth, screenHeight, r
 	comms.RegisterRegistrationServer(server, &Registrar{sys: sys, screenWidth: screenWidth, screenHeight: screenHeight})
 	
 	// Create a listener for the workers.
-	listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", registrationPort))
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", registrationPort))
 	if err != nil {
 		log.Fatalf("Failed to listen on port \"%d\": %v.\n", registrationPort, err)
 	}
