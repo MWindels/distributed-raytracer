@@ -47,8 +47,8 @@ func (t *Tracer) BulkTrace(ctx context.Context, req *comms.WorkOrder) (*comms.Tr
 	t.timeoutReset()
 	
 	// Set up this call's results.
-	xInit, yInit := req.GetX(), req.GetY()
-	width, height := req.GetWidth(), req.GetHeight()
+	xInit, yInit := int(req.GetX()), int(req.GetY())
+	width, height := int(req.GetWidth()), int(req.GetHeight())
 	results := &comms.TraceResults{
 		Results: make([]*comms.TraceResults_Colour, width * height, width * height),
 	}
@@ -75,7 +75,7 @@ func (t *Tracer) BulkTrace(ctx context.Context, req *comms.WorkOrder) (*comms.Tr
 			}
 			
 			// If an object was hit, use its colour.
-			if objectColour, valid := tracer.Trace(int(xInit + i), int(yInit + j), int(t.screenWidth), int(t.screenHeight), &diff); valid {
+			if objectColour, valid := tracer.Trace(xInit + i, yInit + j, int(t.screenWidth), int(t.screenHeight), &diff); valid {
 				r, g, b = objectColour.RGB()
 			}
 			

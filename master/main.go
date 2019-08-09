@@ -28,7 +28,7 @@ const (
 )
 
 // workerRedundancy controls how many workers are assigned to each partition of the screen.
-const workerRedundancy uint = 2
+const workerRedundancy uint = 1
 
 // traceTimeout controls how long the master waits before rejecting a BulkTrace call.
 // This is a variable because the master may want to dynamically change it.
@@ -103,14 +103,14 @@ func newCoordinator(sys *system, diff []byte, frame uint, window *sdl.Window, su
 		// Assign the partitions to workers.
 		resultMap := make(map[<-chan *comms.TraceResults]*comms.WorkOrder)
 		resultChs := make([]reflect.SelectCase, 0, workerRedundancy * uint(len(partitions)))
-		for _, p := range partitions {
+		for i := 0; i < len(partitions); i++ {
 			var err error
 			assigned := false
 			
 			// Assign worker(s) to the current partition.
-			for i := uint(0); i < workerRedundancy; i++ {
-				if resultCh, err := sys.workers.Assign(&p, traceTimeout); err == nil {
-					resultMap[resultCh] = &p
+			for j := uint(0); j < workerRedundancy; j++ {
+				if resultCh, err := sys.workers.Assign(&partitions[i], traceTimeout); err == nil {
+					resultMap[resultCh] = &partitions[i]
 					resultChs = append(resultChs, reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(resultCh)})
 					assigned = true
 				}
@@ -166,12 +166,12 @@ func newCoordinator(sys *system, diff []byte, frame uint, window *sdl.Window, su
 		surface.FillRect(nil, 0)
 		for o, r := range orderMap {
 			pixels := r.GetResults()
-			xInit, xFinal := int(o.GetX()), int(o.GetX() + o.GetWidth())
-			yInit, yFinal := int(o.GetY()), int(o.GetY() + o.GetHeight())
-			for i := xInit; i < xFinal; i++ {
-				for j := yInit; j < yFinal; j++ {
-					pixel := pixels[i * int(surface.H) + j]
-					surface.Set(i, j, colour.NewRGB(uint8(pixel.GetR()), uint8(pixel.GetG()), uint8(pixel.GetB())))
+			xInit, yInit := int(o.GetX()), int(o.GetY())
+			width, height := int(o.GetWidth()), int(o.GetHeight())
+			for i := 0; i < width; i++ {
+				for j := 0; j < height; j++ {
+					pixel := pixels[i * height + j]
+					surface.Set(xInit + i, yInit + j, colour.NewRGB(uint8(pixel.GetR()), uint8(pixel.GetG()), uint8(pixel.GetB())))
 				}
 			}
 		}
