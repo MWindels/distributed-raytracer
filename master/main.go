@@ -14,6 +14,8 @@ import (
 	"reflect"
 	"bytes"
 	"sync"
+	"math"
+	"sort"
 	"log"
 	"os"
 )
@@ -31,6 +33,12 @@ const workerRedundancy uint = 2
 // traceTimeout controls how long the master waits before rejecting a BulkTrace call.
 // This is a variable because the master may want to dynamically change it.
 var traceTimeout uint = 1000
+
+// these variables are used to calculate the number of frames per second.
+var (
+	frameStartTimes []uint32 = nil
+	frameEndTimes []uint32 = nil
+)
 
 // system represents the whole distributed system as the master sees it.
 type system struct {
@@ -154,6 +162,7 @@ func newCoordinator(sys *system, diff []byte, frame uint, window *sdl.Window, su
 		
 		// Draw the frame.
 		<-in
+		frameEndTimes = append(frameEndTimes, sdl.GetTicks())
 		surface.FillRect(nil, 0)
 		for o, r := range orderMap {
 			pixels := r.GetResults()
@@ -167,6 +176,7 @@ func newCoordinator(sys *system, diff []byte, frame uint, window *sdl.Window, su
 			}
 		}
 		window.UpdateSurface()
+		frameStartTimes = append(frameStartTimes, sdl.GetTicks())
 		out <- struct{}{}
 	}else{
 		// If there are no workers available, skip the frame.
@@ -225,8 +235,9 @@ func main() {
 	coordinatorIn <- struct{}{}
 	
 	// Parse user input and issue work orders.
+	var frame uint = 0
 	var prevUpdate, currentUpdate uint32
-	for running, frame, moveDirs, yaw, pitch := true, uint(0), uint8(0), 0.0, 0.0; running; {
+	for running, moveDirs, yaw, pitch := true, uint8(0), 0.0, 0.0; running; {
 		prevUpdate = sdl.GetTicks()
 		
 		// Collect new inputs.
@@ -270,4 +281,43 @@ func main() {
 	
 	// Wait for the remaining coordinators to complete.
 	<- coordinatorIn
+	
+	// Log the total number of frames and some FPS stats.
+	log.Printf("Total frames drawn: %d.\n", len(frameEndTimes))
+	log.Printf("Total frames: %d.\n", frame)
+	usableFrames := len(frameEndTimes) - 1
+	if usableFrames > 0 {
+		frameEndTimes = frameEndTimes[1:]
+		frameStartTimes = frameStartTimes[:len(frameStartTimes) - 1]
+		
+		// Compute the frames per second for each frame.
+		durationSum := uint32(0)
+		var fpsPerFrame sort.Float64Slice = make([]float64, usableFrames, usableFrames)
+		for i := 0; i < usableFrames; i++ {
+			durationSum += (frameEndTimes[i] - frameStartTimes[i])
+			fpsPerFrame[i] = float64(i + 1) / math.Max(float64(durationSum) / 1000.0, 0.001)
+		}
+		fpsPerFrame.Sort()
+		
+		// Compute the mean FPS value.
+		fpsMean := 0.0
+		for _, fps := range fpsPerFrame {
+			fpsMean += fps
+		}
+		fpsMean /= float64(usableFrames)
+		
+		// Compute the FPS values' standard deviation.
+		fpsStdDev := 0.0
+		for _, fps := range fpsPerFrame {
+			dev := fps - fpsMean
+			fpsStdDev += dev * dev
+		}
+		fpsStdDev = math.Sqrt(fpsStdDev / float64(usableFrames))
+		
+		// Log stats.
+		log.Printf("Mean FPS: %f.\n", fpsMean)
+		log.Printf("Median FPS: %f.\n", fpsPerFrame[usableFrames / 2])
+		log.Printf("FPS Standard Deviation: %f.\n", fpsStdDev)
+		log.Printf("FPS Range: [%f, %f].\n", fpsPerFrame[0], fpsPerFrame[len(fpsPerFrame) - 1])
+	}
 }
