@@ -21,7 +21,7 @@ import (
 const registerFrequency uint = 500
 
 // traceTimeout controls how long this worker will wait for trace requests and heartbeats before closing its trace server.
-const traceTimeout uint = 1000
+const traceTimeout uint = 2000
 
 // Tracer implements the comms.TraceServer interface.
 type Tracer struct {
@@ -47,7 +47,9 @@ func (t *Tracer) BulkTrace(ctx context.Context, req *comms.WorkOrder) (*comms.Tr
 	t.timeoutReset()
 	
 	// Set up this call's results.
-	width, height := req.GetX() + req.GetWidth(), req.GetY() + req.GetHeight()
+	xInit, yInit := req.GetX(), req.GetY()
+	width, height := req.GetWidth(), req.GetHeight()
+	xFinal, yFinal := xInit + width, yInit + height
 	results := &comms.TraceResults{
 		Results: make([]*comms.TraceResults_Colour, width * height, width * height),
 	}
@@ -63,8 +65,8 @@ func (t *Tracer) BulkTrace(ctx context.Context, req *comms.WorkOrder) (*comms.Tr
 	}
 	
 	// For every pixel specified...
-	for i := req.GetX(); i < width; i++ {
-		for j := req.GetY(); j < height; j++ {
+	for i := xInit; i < xFinal; i++ {
+		for j := yInit; j < yFinal; j++ {
 			// Set up a default colour.
 			var r, g, b uint8 = 0, 0, 0
 			

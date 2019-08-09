@@ -32,7 +32,7 @@ const workerRedundancy uint = 2
 
 // traceTimeout controls how long the master waits before rejecting a BulkTrace call.
 // This is a variable because the master may want to dynamically change it.
-var traceTimeout uint = 1000
+var traceTimeout uint = 2000
 
 // these variables are used to calculate the number of frames per second.
 var (
@@ -166,10 +166,10 @@ func newCoordinator(sys *system, diff []byte, frame uint, window *sdl.Window, su
 		surface.FillRect(nil, 0)
 		for o, r := range orderMap {
 			pixels := r.GetResults()
-			xFirst, xLast := int(o.GetX()), int(o.GetX() + o.GetWidth())
-			yFirst, yLast := int(o.GetY()), int(o.GetY() + o.GetHeight())
-			for i := xFirst; i < xLast; i++ {
-				for j := yFirst; j < yLast; j++ {
+			xInit, xFinal := int(o.GetX()), int(o.GetX() + o.GetWidth())
+			yInit, yFinal := int(o.GetY()), int(o.GetY() + o.GetHeight())
+			for i := xInit; i < xFinal; i++ {
+				for j := yInit; j < yFinal; j++ {
 					pixel := pixels[i * int(surface.H) + j]
 					surface.Set(i, j, colour.NewRGB(uint8(pixel.GetR()), uint8(pixel.GetG()), uint8(pixel.GetB())))
 				}
