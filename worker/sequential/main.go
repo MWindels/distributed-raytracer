@@ -65,8 +65,9 @@ func main() {
 	
 	// Run the input/update/render loop.
 	scene := env.Mutable()
+	/*firstUpdate := sdl.GetTicks()*/
 	var prevUpdate, currentUpdate uint32
-	for running, moveDirs, yaw, pitch := true, uint8(0), 0.0, 0.0; running; {
+	for running, /*frame,*/ moveDirs, yaw, pitch := true, /*uint(0),*/ uint8(0), 0.0, 0.0; running; /*frame++*/ {
 		prevUpdate = sdl.GetTicks()
 		
 		// Handle new inputs.
@@ -84,6 +85,7 @@ func main() {
 		
 		// If there's still time before the next frame needs to be drawn, wait.
 		currentUpdate = sdl.GetTicks()
+		/*log.Printf("\t%f\n", float64(frame) / (float64(currentUpdate - firstUpdate) / 1000.0))*/
 		if currentUpdate - prevUpdate < screen.MsPerFrame {
 			sdl.Delay(screen.MsPerFrame - (currentUpdate - prevUpdate))
 		}

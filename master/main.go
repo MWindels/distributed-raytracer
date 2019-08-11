@@ -162,7 +162,6 @@ func newCoordinator(sys *system, diff []byte, frame uint, window *sdl.Window, su
 		
 		// Draw the frame.
 		<-in
-		frameEndTimes = append(frameEndTimes, sdl.GetTicks())
 		surface.FillRect(nil, 0)
 		for o, r := range orderMap {
 			pixels := r.GetResults()
@@ -176,6 +175,7 @@ func newCoordinator(sys *system, diff []byte, frame uint, window *sdl.Window, su
 			}
 		}
 		window.UpdateSurface()
+		frameEndTimes = append(frameEndTimes, sdl.GetTicks())
 		frameStartTimes = append(frameStartTimes, sdl.GetTicks())
 		out <- struct{}{}
 	}else{
@@ -319,5 +319,8 @@ func main() {
 		log.Printf("Median FPS: %f.\n", fpsPerFrame[usableFrames / 2])
 		log.Printf("FPS Standard Deviation: %f.\n", fpsStdDev)
 		log.Printf("FPS Range: [%f, %f].\n", fpsPerFrame[0], fpsPerFrame[len(fpsPerFrame) - 1])
+		for _, fps := range fpsPerFrame {
+			log.Printf("\t%f\n", fps)
+		}
 	}
 }
